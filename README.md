@@ -1,6 +1,6 @@
 # FlexMask EduRanker: LLM Suffix Ranking for Student Math Misconception Detection
 
-A production-grade, CV-worthy repository showcasing a **1st-place** approach for misconception-aware MCQ scoring.
+A production-grade, CV-worthy repository showcasing a **State-of-the-art** approach for misconception-aware MCQ scoring.
 This project reframes the problem as **suffix classification** using LLMs, **FlexAttention-style masking**, and
 **multi-seed ensembling**. Optimized inference is supported via **W8A8 INT8 quantization** interfaces.
 
