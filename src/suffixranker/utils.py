@@ -1,39 +1,44 @@
-# -*- coding: utf-8 -*-
-"""Utilities: seeding, metrics, and helpers."""
-
 from __future__ import annotations
+
 import random
-from typing import Iterable, List, Sequence
+from collections.abc import Sequence
+
 import numpy as np
 import torch
 
+
 def seed_everything(seed: int) -> None:
-    """Fix seeds for reproducibility across libraries and CUDA."""
+    """Seed Python, NumPy, and torch for reproducibility."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
-def mapk(y_true: Sequence[int], y_pred_ranks: Sequence[Sequence[int]], k: int = 3) -> float:
-    """Compute mean average precision at k.
+
+def mapk(
+    y_true: Sequence[int],
+    y_pred_ranks: Sequence[Sequence[int]],
+    k: int = 3,
+) -> float:
+    """Compute mean average precision at k (MAP@k).
 
     Args:
-        y_true: Iterable of true target indices per sample (integer id within candidates).
-        y_pred_ranks: Iterable of predicted ranking lists per sample (indices in descending score order).
-        k: Cutoff.
+        y_true: Sequence of true label indices per sample.
+        y_pred_ranks: Sequence of predicted ranking lists per sample.
+        k: Cutoff for the ranking.
 
     Returns:
-        MAP@k value in [0,1].
+        MAP@k score in the range [0.0, 1.0].
     """
-    assert len(y_true) == len(y_pred_ranks), "Mismatched lengths"
-    ap_list = []
-    for t, ranks in zip(y_true, y_pred_ranks):
-        ranks = list(ranks)[:k]
-        if t in ranks:
-            pos = ranks.index(t)
-            ap_list.append(1.0 / (pos + 1))
-        else:
-            ap_list.append(0.0)
-    return float(np.mean(ap_list)) if ap_list else 0.0
+    ap_values: list[float] = []
+
+    for true_label, ranks in zip(y_true, y_pred_ranks):
+        score = 0.0
+        for j, pred in enumerate(ranks[:k], start=1):
+            if pred == true_label:
+                score = 1.0 / j
+                break
+        ap_values.append(score)
+
+    return float(np.mean(ap_values)) if ap_values else 0.0

@@ -1,21 +1,23 @@
-train:
-  model_name: "Qwen/Qwen3-8B"
-  output_dir: "artifacts/checkpoints/qwen3-8b"
+data:
+  input_csv: artifacts/data/train_clean.csv
+  folds_json: artifacts/data/folds.json
+  label_column: LabelIndex
+  suffix_column: SuffixCandidates
+
+training:
+  fold: 0
+  seed: 42
   epochs: 1
-  batch_size: 32
+  batch_size: 8
   learning_rate: 1.0e-5
   weight_decay: 0.01
-  warmup_ratio: 0.03
-  seed: 123
-  fold_index: 0
-  max_length: 4096
-  gradient_accumulation_steps: 1
-  mixed_precision: "bf16"   # or "fp16" / "no"
-  log_every: 50
-  save_every: 500
+  warmup_ratio: 0.1
+  mixed_precision: "bf16"
+
+model:
+  model_name: Qwen/Qwen3-8B
+  max_length: 2048
   use_bitsandbytes: true
-  lora:
-    enabled: false
-    r: 16
-    alpha: 32
-    dropout: 0.05
+
+logging:
+  out_dir: artifacts/runs/run_fold0_seed42

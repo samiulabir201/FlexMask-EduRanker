@@ -1,79 +1,97 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""Prepare dataset: deduplicate, stratified folds, and export splits.
-
-This script expects an input CSV with the following columns:
-- QuestionText, MC_Choices, Answer, MisconceptionCandidates,
-  MC_Answer, StudentExplanation, Category, QuestionId
-
-Outputs:
-- artifacts/data/train.csv (cleaned)
-- artifacts/data/folds.json (list of fold assignments)
 """
+Prepare MAP@3 training data:
+
+- Load raw train.csv
+- Drop duplicates
+- Create stratified k-folds by Category
+- Build a numeric label index and suffix candidate strings
+"""
+
+from __future__ import annotations
 
 import argparse
 import json
-import os
+from pathlib import Path
+
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
-def deduplicate(df):
-    """Remove exact-duplicate rows to stabilize training.
 
-    Args:
-        df (pd.DataFrame): Raw dataframe.
+def deduplicate(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop duplicate QuestionId + StudentExplanation rows."""
+    return df.drop_duplicates(
+        subset=["QuestionId", "MC_Answer", "StudentExplanation"],
+    ).reset_index(drop=True)
 
-    Returns:
-        pd.DataFrame: Deduplicated dataframe.
+
+def build_suffix_column(
+    df: pd.DataFrame,
+) -> tuple[pd.DataFrame, list[str]]:
+    """Build canonical 'Category:Misconception' string and label index.
+
+    Returns
+    -------
+    df:
+        DataFrame with columns 'CategoryMis', 'LabelIndex' and 'SuffixCandidates'.
+    labels:
+        List of all unique label strings in index order.
     """
-    before = len(df)
-    df = df.drop_duplicates().reset_index(drop=True)
-    after = len(df)
-    print(f"Deduplicated: {before} -> {after}")
-    return df
+    df = df.copy()
+    df["CategoryMis"] = df["Category"].fillna("NA") + ":" + df["Misconception"].fillna("NA")
+    labels = sorted(df["CategoryMis"].unique().tolist())
+    label_to_idx = {lab: i for i, lab in enumerate(labels)}
+    df["LabelIndex"] = df["CategoryMis"].map(label_to_idx)
 
-def build_folds(df, n_splits, seed, label_col="Category"):
-    """Create stratified K-fold assignments by a label column.
+    # For this repo, we assume candidates per item are provided externally or equal
+    # to all labels (for demo); in competition, you'd limit to question-specific.
+    df["SuffixCandidates"] = [labels] * len(df)
+    return df, labels
 
-    Args:
-        df (pd.DataFrame): Cleaned dataframe.
-        n_splits (int): Number of folds.
-        seed (int): Random seed.
-        label_col (str): Column for stratification.
 
-    Returns:
-        list[int]: Fold index (0..n_splits-1) per row.
-    """
-    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
+def make_folds(df: pd.DataFrame, n_splits: int) -> list[int]:
+    """Create stratified folds by CategoryMis."""
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
     folds = [-1] * len(df)
-    for fi, (_, val_idx) in enumerate(skf.split(df, df[label_col])):
+    for fold, (_, val_idx) in enumerate(skf.split(df, df["CategoryMis"])):
         for i in val_idx:
-            folds[i] = fi
-    assert all(f >= 0 for f in folds), "Invalid fold assignment"
+            folds[i] = fold
     return folds
 
-def main():
+
+def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", required=True)
-    parser.add_argument("--output_dir", required=True)
+    parser.add_argument("--input", required=True, help="Path to raw train.csv from Kaggle.")
+    parser.add_argument(
+        "--output_dir",
+        required=True,
+        help="Directory to write cleaned CSV + folds + labels.",
+    )
     parser.add_argument("--folds", type=int, default=5)
-    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    os.makedirs(args.output_dir, exist_ok=True)
+    out_dir = Path(args.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
     df = pd.read_csv(args.input)
     df = deduplicate(df)
 
-    # Save cleaned CSV
-    out_csv = os.path.join(args.output_dir, "train.csv")
-    df.to_csv(out_csv, index=False)
+    df, labels = build_suffix_column(df)
+    folds = make_folds(df, n_splits=args.folds)
+    df = df.assign(fold=folds)
 
-    # Build folds
-    folds = build_folds(df, n_splits=args.folds, seed=args.seed, label_col="Category")
-    with open(os.path.join(args.output_dir, "folds.json"), "w", encoding="utf-8") as f:
-        json.dump(folds, f)
+    clean_csv = out_dir / "train_clean.csv"
+    labels_json = out_dir / "labels.json"
+    folds_json = out_dir / "folds.json"
 
-    print("Done. Cleaned data and folds saved:", args.output_dir)
+    df.to_csv(clean_csv, index=False)
+    labels_json.write_text(json.dumps({"labels": labels}, ensure_ascii=False, indent=2))
+    folds_json.write_text(json.dumps(folds))
+
+    print(f"Wrote cleaned data to {clean_csv}")
+    print(f"Wrote labels to {labels_json}")
+    print(f"Wrote folds to {folds_json}")
+
 
 if __name__ == "__main__":
     main()

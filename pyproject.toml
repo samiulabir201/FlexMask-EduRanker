@@ -1,16 +1,34 @@
-[project]
-name = "flexmask-eduranker"
-version = "0.1.0"
-description = "LLM-driven suffix classification with FlexAttention-style masking, ensembling, and INT8 inference."
-readme = "README.md"
-authors = [{name="Samiul Islam"}]
-requires-python = ">=3.9"
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
 
-[tool.black]
-line-length = 100
-target-version = ["py39"]
+[project]
+name = "suffixranker"
+version = "0.1.0"
+description = "LLM suffix ranking for student math misconception detection (MAP@3)."
+authors = [
+  { name = "Samiul Islam", email = "samiulislam@iut-dhaka.edu" },
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "torch>=2.0",
+  "transformers>=4.40",
+  "accelerate>=0.28",
+  "pandas>=2.0",
+  "numpy>=1.24",
+  "scikit-learn>=1.3",
+  "matplotlib>=3.7",
+  "pyyaml>=6.0",
+  "optuna>=3.0",
+  "tqdm>=4.65",
+  "bitsandbytes>=0.43",
+]
 
 [tool.ruff]
 line-length = 100
-select = ["E","F","I","W","UP","B"]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
 ignore = ["E203"]

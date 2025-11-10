@@ -1,76 +1,105 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """
-Optuna hyperparameter tuning for FlexMask EduRanker.
+Optuna hyperparameter tuning for suffix ranker.
 
-This script launches multiple trials, calling the training entrypoint per trial with overrides.
-It logs MAP@3 per trial and saves optimization plots.
-
-Note: For speed/cost, you may limit to one fold and fewer steps/epochs.
+This script shells out to `python -m suffixranker.train` with overrides and reads
+the validation MAP@3 from a log file.
 """
+
 from __future__ import annotations
 
-import os, json, argparse, subprocess, tempfile
-import optuna
+import argparse
+import json
+import os
+import subprocess
+from pathlib import Path
+
 import matplotlib.pyplot as plt
-from optuna.visualization.matplotlib import plot_optimization_history, plot_param_importances
+import optuna
+from optuna.visualization.matplotlib import (
+    plot_optimization_history,
+    plot_param_importances,
+)
 
-def objective(trial: optuna.Trial, base_config: str, data_config: str, out_root: str) -> float:
-    lr = trial.suggest_float("learning_rate", 5e-6, 5e-5, log=True)
+
+def objective(
+    trial: optuna.Trial,
+    base_config: str,
+    data_config: str,
+    out_root: str,
+) -> float:
+    """Optuna objective: run one training job and return validation MAP@3."""
+    lr = trial.suggest_float("learning_rate", 5e-6, 3e-5, log=True)
     wd = trial.suggest_float("weight_decay", 0.0, 0.1)
-    warmup = trial.suggest_float("warmup_ratio", 0.0, 0.1)
-    seed = trial.suggest_int("seed", 1, 999)
-    batch = trial.suggest_categorical("batch_size", [8, 16, 32])
+    seed = trial.suggest_int("seed", 1, 5)
 
-    run_dir = os.path.join(out_root, f"trial_{trial.number}")
-    os.makedirs(run_dir, exist_ok=True)
+    run_dir = Path(out_root) / f"trial_{trial.number}"
+    run_dir.mkdir(parents=True, exist_ok=True)
 
     overrides = [
-        f"train.learning_rate={lr}",
-        f"train.weight_decay={wd}",
-        f"train.warmup_ratio={warmup}",
-        f"train.seed={seed}",
-        f"train.batch_size={batch}",
-        f"train.output_dir={run_dir}",
+        f"--training.learning_rate={lr}",
+        f"--training.weight_decay={wd}",
+        f"--training.seed={seed}",
+        f"--logging.out_dir={run_dir}",
+        f"--data.config={data_config}",
     ]
+
     cmd = ["python", "-m", "suffixranker.train", "--config", base_config] + overrides
     env = os.environ.copy()
-    proc = subprocess.run(cmd, env=env, capture_output=True, text=True)
-    # read val score
-    val_file = os.path.join(run_dir, "logs", "val_map3.txt")
-    if os.path.exists(val_file):
-        with open(val_file, "r", encoding="utf-8") as f:
-            score = float(f.read().strip())
+    # You could add CUDA_VISIBLE_DEVICES, etc., here.
+    subprocess.run(cmd, env=env, check=False)
+
+    val_file = run_dir / "logs" / "val_map3.txt"
+    if val_file.exists():
+        score = float(val_file.read_text(encoding="utf-8").strip())
     else:
-        score = 0.0  # failed trial
+        # Penalize failed runs
+        score = 0.0
     return score
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--base_config", default="configs/train.yaml")
-    ap.add_argument("--data_config", default="configs/data.yaml")
-    ap.add_argument("--out_dir", default="artifacts/optuna")
-    ap.add_argument("--trials", type=int, default=10)
-    args = ap.parse_args()
 
-    os.makedirs(args.out_dir, exist_ok=True)
-    study = optuna.create_study(direction="maximize", study_name="eduranker-tuning")
-    study.optimize(lambda t: objective(t, args.base_config, args.data_config, args.out_dir), n_trials=args.trials)
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="configs/train.yaml")
+    parser.add_argument("--data_config", default="configs/data.yaml")
+    parser.add_argument("--out_root", default="artifacts/optuna")
+    parser.add_argument("--n_trials", type=int, default=20)
+    args = parser.parse_args()
 
-    # Save study
-    with open(os.path.join(args.out_dir, "study_best.json"), "w", encoding="utf-8") as f:
-        json.dump({"best_value": study.best_value, "best_params": study.best_params}, f, indent=2)
+    Path(args.out_root).mkdir(parents=True, exist_ok=True)
+
+    def obj_wrapper(trial: optuna.Trial) -> float:
+        return objective(trial, args.config, args.data_config, args.out_root)
+
+    study = optuna.create_study(direction="maximize")
+    study.optimize(obj_wrapper, n_trials=args.n_trials)
+
+    # Save study summary
+    best = {
+        "best_value": study.best_value,
+        "best_params": study.best_params,
+    }
+    Path(args.out_root, "best.json").write_text(
+        json.dumps(best, indent=2),
+        encoding="utf-8",
+    )
 
     # Plots
-    fig1 = plot_optimization_history(study)
-    fig1.figure.savefig(os.path.join(args.out_dir, "opt_history.png"), dpi=170)
-    plt.close(fig1.figure)
+    plt.figure()
+    plot_optimization_history(study)
+    plt.tight_layout()
+    plt.savefig(Path(args.out_root, "opt_history.png"), dpi=170)
+    plt.close()
 
-    fig2 = plot_param_importances(study)
-    fig2.figure.savefig(os.path.join(args.out_dir, "opt_param_importance.png"), dpi=170)
-    plt.close(fig2.figure)
+    plt.figure()
+    plot_param_importances(study)
+    plt.tight_layout()
+    plt.savefig(Path(args.out_root, "opt_param_importances.png"), dpi=170)
+    plt.close()
 
-    print("Optuna tuning complete. Plots saved under:", args.out_dir)
+    print(f"Best MAP@3: {study.best_value:.5f}")
+    print(f"Best params: {study.best_params}")
+
 
 if __name__ == "__main__":
     main()

@@ -1,4 +1,6 @@
-"""SuffixRanker package: LLM-based suffix classification with FlexMask masking."""
-__all__ = [
-    "data", "prompt", "mask", "model", "train", "infer", "ensemble", "utils",
-]
+"""Suffix ranking package for student math misconception detection."""
+
+from .model import ModelConfig, SuffixRanker
+from .utils import mapk
+
+__all__ = ["ModelConfig", "SuffixRanker", "mapk"]

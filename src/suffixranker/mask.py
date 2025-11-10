@@ -1,36 +1,46 @@
-# -*- coding: utf-8 -*-
-"""FlexMask: Build custom attention masks to isolate suffixes while allowing prefix visibility."""
+"""FlexMask: build custom attention masks to isolate suffixes while allowing prefix visibility."""
 
 from __future__ import annotations
-from typing import Optional, Tuple
+
 import torch
 
-def build_suffix_mask(suffix_ids: torch.Tensor, doc_ids: torch.Tensor) -> torch.Tensor:
-    """Create a boolean attention mask over a sequence with multiple suffix segments.
 
-    This mask implements the following logic per (query, key) token pair:
-        causal = q_idx >= kv_idx
-        is_prefix = suffix_ids[kv_idx] == -1
-        same_suffix = (suffix_ids[q_idx] == suffix_ids[kv_idx])
-        same_doc = doc_ids[q_idx] == doc_ids[kv_idx]
-        allow = causal & (same_suffix | is_prefix) & same_doc
+def build_suffix_mask(
+    suffix_ids: torch.Tensor,
+    doc_ids: torch.Tensor,
+) -> torch.Tensor:
+    """Build a boolean attention mask enforcing:
 
-    Args:
-        suffix_ids: (T,) tensor. -1 for prefix tokens, otherwise the suffix index (0..N-1).
-        doc_ids: (T,) tensor. Identifies which tokens belong to the same document (question).
-                 Useful when packing multiple questions per batch element.
+    - causal attention;
+    - all tokens can see **prefix** tokens (suffix_ids == -1);
+    - suffix tokens can only see tokens from the same suffix or prefix;
+    - tokens from different documents cannot see each other.
 
-    Returns:
-        attn_mask: (T, T) boolean tensor where True means **allowed to attend**.
+    Parameters
+    ----------
+    suffix_ids:
+        Tensor of shape (T,) or (B, T) assigning each token to a suffix index,
+        or -1 for prefix tokens.
+    doc_ids:
+        Tensor of same shape giving a document id per token.
+
+    Returns
+    -------
+    torch.Tensor
+        Boolean mask of shape (T, T) or (B, T, T) where True means attention is allowed.
     """
-    T = suffix_ids.size(0)
-    q_idx = torch.arange(T, device=suffix_ids.device).unsqueeze(1)  # (T,1)
-    kv_idx = torch.arange(T, device=suffix_ids.device).unsqueeze(0)  # (1,T)
+    if suffix_ids.dim() == 1:
+        suffix_ids = suffix_ids.unsqueeze(0)
+        doc_ids = doc_ids.unsqueeze(0)
+    bsz, seqlen = suffix_ids.shape
 
-    causal = q_idx >= kv_idx  # (T,T)
-    is_prefix = suffix_ids[kv_idx] == -1  # broadcast (1,T) -> (T,T)
-    same_suffix = suffix_ids[q_idx] == suffix_ids[kv_idx]
-    same_doc = doc_ids[q_idx] == doc_ids[kv_idx]
+    q_idx = torch.arange(seqlen, device=suffix_ids.device).view(1, -1, 1)
+    kv_idx = torch.arange(seqlen, device=suffix_ids.device).view(1, 1, -1)
 
-    allow = causal & (same_doc & (is_prefix | same_suffix))
+    causal = q_idx >= kv_idx
+    is_prefix = suffix_ids.eq(-1).unsqueeze(1)
+    same_suffix = suffix_ids.unsqueeze(1).eq(suffix_ids.unsqueeze(2))
+    same_doc = doc_ids.unsqueeze(1).eq(doc_ids.unsqueeze(2))
+
+    allow = causal & (is_prefix | same_suffix) & same_doc
     return allow

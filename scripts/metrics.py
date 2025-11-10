@@ -1,98 +1,130 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """
 Metrics and plotting utilities for MAP@3 and confusion matrix.
 
-Goal & Intuition:
-- Provide reliable, competition-aligned MAP@3 and a standard confusion matrix.
-- Accuracy maps clarify which categories the model confuses.
-
-Functions:
-- mapk(y_true, y_pred_ranks, k): Mean Average Precision @ k.
-- make_confusion(true_labels, pred_labels, labels): Dense confusion matrix (counts).
+Functions
+---------
+- mapk(y_true, y_pred_ranks, k): Mean Average Precision at k.
+- make_confusion(true_labels, pred_labels, labels): Confusion matrix (counts).
 - plot_confusion(cm, labels, out_png, normalize): Save a confusion matrix heatmap.
 """
+
 from __future__ import annotations
-from typing import Sequence, List
-import numpy as np
+
+from collections.abc import Sequence
+
 import matplotlib.pyplot as plt
+import numpy as np
 
-def mapk(y_true: Sequence[int], y_pred_ranks: Sequence[Sequence[int]], k: int = 3) -> float:
+
+def mapk(
+    y_true: Sequence[int],
+    y_pred_ranks: Sequence[Sequence[int]],
+    k: int = 3,
+) -> float:
+    """Compute MAP@k for ranked indices.
+
+    Parameters
+    ----------
+    y_true:
+        Sequence of true target indices per sample (integer id within candidates).
+    y_pred_ranks:
+        Sequence of predicted ranking lists per sample (indices in descending
+        score order).
+    k:
+        Cutoff.
+
+    Returns
+    -------
+    float
+        Mean Average Precision at k.
     """
-    Compute mean average precision at k (MAP@k).
-
-    Intuition:
-        Rewards placing the correct label as high as possible within top-k.
-        For each item, AP = 1/(rank of correct label) if within top-k else 0.
-
-    Args:
-        y_true: Iterable of true label indices per item.
-        y_pred_ranks: Iterable of ranked label indices per item (best → worst).
-        k: Cutoff (default 3 per competition).
-
-    Returns:
-        Mean of per-item AP@k in [0,1].
-    """
-    assert len(y_true) == len(y_pred_ranks), "Lengths mismatch"
     ap = []
-    for t, ranks in zip(y_true, y_pred_ranks):
-        r = list(ranks)[:k]
-        ap.append(1.0/(r.index(t)+1) if t in r else 0.0)
+    for yt, ranks in zip(y_true, y_pred_ranks, strict=False):
+        if yt in ranks[:k]:
+            pos = ranks.index(yt)
+            ap.append(1.0 / (pos + 1))
+        else:
+            ap.append(0.0)
     return float(np.mean(ap)) if ap else 0.0
 
-def make_confusion(true_labels: Sequence[int], pred_labels: Sequence[int], labels: List[str]) -> np.ndarray:
-    """
-    Build a confusion matrix (counts).
 
-    Args:
-        true_labels: True label indices.
-        pred_labels: Predicted label indices (argmax or top-1).
-        labels: Ordered list of label names (defines matrix size & order).
+def make_confusion(
+    true_labels: Sequence[int],
+    pred_labels: Sequence[int],
+    labels: list[str],
+) -> np.ndarray:
+    """Build a confusion matrix (counts).
 
-    Returns:
-        cm: (L, L) ndarray where rows = true, cols = predicted.
+    Parameters
+    ----------
+    true_labels:
+        Sequence of true label indices.
+    pred_labels:
+        Sequence of predicted label indices.
+    labels:
+        List of label names in index order.
+
+    Returns
+    -------
+    np.ndarray
+        Confusion matrix of shape (n_labels, n_labels).
     """
-    L = len(labels)
-    cm = np.zeros((L, L), dtype=int)
-    for t, p in zip(true_labels, pred_labels):
-        if 0 <= t < L and 0 <= p < L:
-            cm[t, p] += 1
+    n = len(labels)
+    cm = np.zeros((n, n), dtype=int)
+    for t, p in zip(true_labels, pred_labels, strict=False):
+        cm[t, p] += 1
     return cm
 
-def plot_confusion(cm: np.ndarray, labels: List[str], out_png: str, normalize: bool = False) -> None:
+
+def plot_confusion(
+    cm: np.ndarray,
+    labels: list[str],
+    out_png: str,
+    normalize: bool = False,
+) -> None:
+    """Plot (and save) a confusion matrix heatmap.
+
+    Parameters
+    ----------
+    cm:
+        Confusion matrix counts.
+    labels:
+        List of label names.
+    out_png:
+        Path to save PNG.
+    normalize:
+        Whether to normalize rows to probabilities.
     """
-    Plot (and save) confusion matrix with or without normalization.
-
-    Args:
-        cm: Raw counts matrix.
-        labels: Class labels (row/col order).
-        out_png: Path to save the PNG figure.
-        normalize: If True, row-normalize to show per-class accuracies.
-
-    Output:
-        Saves a PNG heatmap with numeric annotations.
-    """
-    import numpy as np
-    import matplotlib.pyplot as plt
-
-    m = cm.astype(float)
     if normalize:
-        row_sums = m.sum(axis=1, keepdims=True) + 1e-12
-        m = m / row_sums
+        m = cm.astype(float)
+        row_sum = m.sum(axis=1, keepdims=True)
+        row_sum[row_sum == 0.0] = 1.0
+        m = m / row_sum
+    else:
+        m = cm.astype(float)
 
-    plt.figure()
-    plt.imshow(m, aspect="auto")
-    plt.title("Accuracy Map (Confusion Matrix)")
+    plt.figure(figsize=(8, 6))
+    plt.imshow(m, interpolation="nearest", aspect="auto")
+    plt.colorbar()
+    plt.xticks(range(len(labels)), labels, rotation=90)
+    plt.yticks(range(len(labels)), labels)
     plt.xlabel("Predicted")
     plt.ylabel("True")
-    plt.xticks(ticks=np.arange(len(labels)), labels=labels, rotation=45, ha="right")
-    plt.yticks(ticks=np.arange(len(labels)), labels=labels)
-    plt.colorbar()
-    # annotate
+    plt.title("Confusion matrix" + (" (normalized)" if normalize else ""))
+
+    # Add numbers
     for i in range(m.shape[0]):
         for j in range(m.shape[1]):
             val = m[i, j] if normalize else int(cm[i, j])
-            plt.text(j, i, f"{val:.2f}" if normalize else f"{val}", ha="center", va="center", fontsize=7)
+            plt.text(
+                j,
+                i,
+                f"{val:.2f}" if normalize else f"{val}",
+                ha="center",
+                va="center",
+                fontsize=7,
+            )
     plt.tight_layout()
     plt.savefig(out_png, dpi=170)
     plt.close()

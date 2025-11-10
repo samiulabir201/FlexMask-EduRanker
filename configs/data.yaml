@@ -1,14 +1,11 @@
-data:
-  input_csv: artifacts/data/train.csv
-  folds: 5
-  seed: 42
-  text_columns:
-    question: "QuestionText"
-    choices: "MC_Choices"
-    answer: "Answer"
-    misconceptions: "MisconceptionCandidates"
-    student_answer: "MC_Answer"
-    student_explanation: "StudentExplanation"
-    category: "Category"
-    question_id: "QuestionId"
-  output_dir: artifacts/data
+input_csv: artifacts/data/train_clean.csv
+folds: 5
+label_column: LabelIndex
+suffix_column: SuffixCandidates
+question_columns:
+  question_text: QuestionText
+  choices: MC_Choices
+  correct_answer: Answer
+  misconception_candidates: MisconceptionCandidates
+  student_answer: MC_Answer
+  student_explanation: StudentExplanation
