@@ -169,23 +169,33 @@ Quick, decision-shaping visuals (see **docs/eda.md** for more):
 
 ## Evaluation (MAP@3)
 
-We use **Mean Average Precision at 3** (MAP@3). For each observation *i* with true label *yᵢ* and ranked predictions
-*Rᵢ = [rᵢ₁, rᵢ₂, rᵢ₃]*, the per-item Average Precision is:
-[
-\mathrm{AP@3}(i) = \begin{cases}
-1, & \text{if } y_i = r_{i1} \
-\frac{1}{2}, & \text{if } y_i = r_{i2} \
-\frac{1}{3}, & \text{if } y_i = r_{i3} \
+We use **Mean Average Precision at 3 (MAP@3)**. For each observation \(i\) with true label \(y_i\) and ranked
+predictions
+
+$$
+R_i = [r_{i1}, r_{i2}, r_{i3}],
+$$
+
+the per-item Average Precision is:
+
+$$
+\mathrm{AP@3}(i) =
+\begin{cases}
+1, & \text{if } y_i = r_{i1} \\
+\frac{1}{2}, & \text{if } y_i = r_{i2} \\
+\frac{1}{3}, & \text{if } y_i = r_{i3} \\
 0, & \text{otherwise}
 \end{cases}
-]
-and **MAP@3** is the mean of AP@3 over all items.
+$$
 
-Examples that all score **1.0** when the correct label is A:
+and **MAP@3** is the mean of \(\mathrm{AP@3}(i)\) over all items.
 
-* `[A, B, C]`
-* `[A, A, A]`
-* `[A, B, A]`
+Examples that all score **1.0** when the correct label is \(A\):
+
+- \([A, B, C]\)
+- \([A, A, A]\)
+- \([A, B, A]\)
+
 
 ## Submission Format
 
@@ -198,5 +208,4 @@ row_id,Category:Misconception
 36698,True_Correct:NA False_Neither:NA False_Misconception:Incomplete
 ```
 
-````
 
