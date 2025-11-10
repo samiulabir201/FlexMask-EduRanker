@@ -1,0 +1,16 @@
+[project]
+name = "flexmask-eduranker"
+version = "0.1.0"
+description = "LLM-driven suffix classification with FlexAttention-style masking, ensembling, and INT8 inference."
+readme = "README.md"
+authors = [{name="Samiul Islam"}]
+requires-python = ">=3.9"
+
+[tool.black]
+line-length = 100
+target-version = ["py39"]
+
+[tool.ruff]
+line-length = 100
+select = ["E","F","I","W","UP","B"]
+ignore = ["E203"]

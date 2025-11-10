@@ -1,0 +1,7 @@
+infer:
+  model_name_or_path: "artifacts/checkpoints/qwen3-8b"
+  input_jsonl: "artifacts/preds/run_0/val_logits.jsonl"
+  output_jsonl: "artifacts/preds/run_0/submission.jsonl"
+  batch_size: 32
+  use_bitsandbytes: true
+  max_length: 4096
