@@ -1,4 +1,3 @@
-````md
 # FlexMask EduRanker: LLM Suffix Ranking for Student Math Misconception Detection
 
 A production-grade, CV-worthy repository showcasing a **1st-place** approach for misconception-aware MCQ scoring.
